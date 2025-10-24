@@ -1,8 +1,6 @@
-import logging
 import time
 from datetime import datetime
-
-import requests
+import asyncio
 from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
@@ -10,7 +8,10 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 
-logger = logging.getLogger(__name__)
+from utils.app_logger import get_logger
+from connectors.users_service_client import UsersClient
+
+log = get_logger(__name__)
 
 HEALTH_CACHE_KEY = "health:dependencies"
 HEALTH_CACHE_TTL = 5  # seconds — prevents hammering dependencies on high traffic
@@ -25,28 +26,16 @@ def _check_db():
             cursor.fetchone()
         latency_ms = (time.monotonic() - start) * 1000
         payload.update(status="ok", latency_ms=round(latency_ms, 2))
+        log.info("DB health check succeeded", latency_ms=payload["latency_ms"])
     except Exception as exc:
-        logger.exception("DB health check failed")
+        log.debug("DB health check failed", exc_info=exc)
         payload.update(status="failed")
     return payload
 
-def _check_users_service():
-    payload = {"status": "unknown", "latency_ms": None}
-    url = getattr(settings, "USERS_SERVICE_URL", None)
-    if not url:
-        payload.update(status="not_configured")
-        return payload
+def _check_users_service(correlation_id: str | None = None):
+    response = asyncio.run(UsersClient().check_health(correlation_id=correlation_id))
+    return response
 
-    start = time.monotonic()
-    try:
-        resp = requests.get(f"{url.rstrip('/')}/health/", timeout=2)
-        latency_ms = (time.monotonic() - start) * 1000
-        payload["latency_ms"] = round(latency_ms, 2)
-        payload["status"] = "ok" if resp.status_code == 200 else "unhealthy"
-    except requests.RequestException:
-        logger.exception("Users service health check failed")
-        payload["status"] = "unreachable"
-    return payload
 
 @api_view(["GET"])
 def index(request):
@@ -66,7 +55,7 @@ def index(request):
     else:
         deps = {}
         deps["database"] = _check_db()
-        deps["users_service"] = _check_users_service()
+        deps["users_service"] = _check_users_service(correlation_id=request.correlation_id)
         cache.set(HEALTH_CACHE_KEY, deps, HEALTH_CACHE_TTL)
 
     data.update({"dependencies": deps})
