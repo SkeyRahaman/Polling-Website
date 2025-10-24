@@ -50,6 +50,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    # Custom Middleware
+    'core.middleware.correlation_id.CorrelationIdMiddleware',
+    'core.middleware.request_logger.RequestLoggerMiddleware',
 ]
 
 ROOT_URLCONF = 'polling_service.urls'
@@ -127,6 +131,16 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Application Configuration
+APPLICATION_NAME = os.getenv("APPLICATION_NAME", "polling_service")
+
+# Logging Configuration
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_FILENAME = os.getenv("LOG_FILENAME", f"{APPLICATION_NAME}.log")
+LOG_FOLDERNAME = os.getenv("LOG_FOLDERNAME", "logs")
+LOG_MAX_BYTES = int(os.getenv("LOG_MAX_BYTES", 5_000_000))
+LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", 2))
 
 # Users Service Configuration
 USERS_SERVICE_HOST = os.environ.get('USERS_SERVICE_HOST', 'users_service')
